@@ -1,9 +1,45 @@
 "use client";
-import { useState } from "react";
-import Image from "next/image";
+import { useState, useEffect, useRef } from "react";
+import { MoreVertical } from "lucide-react"; 
 
 export default function ChatSidebar() {
     const [searchTerm, setSearchTerm] = useState("");
+    const [hovered, setHovered] = useState(null);
+    const [activePos, setActivePos] = useState(null);
+    const [activeButton, setActiveButton] = useState("Privado");
+    const navRef = useRef(null);
+
+    const menuItems = ["Privado", "Grupo", "Usuarios"];
+    
+    useEffect(() => {
+        if (navRef.current) {
+            const activeButtonElement = navRef.current.querySelector(`[data-name="${activeButton}"]`);
+            if (activeButtonElement) {
+                setActivePos({
+                    left: activeButtonElement.offsetLeft,
+                    width: activeButtonElement.offsetWidth,
+                });
+            }
+        }
+    }, [activeButton]);
+
+    const handleHover = (e) => {
+        if (e.target.dataset.name) {
+            setHovered({
+                left: e.target.offsetLeft,
+                width: e.target.offsetWidth,
+            });
+        }
+    };
+
+    const handleMouseLeave = () => {
+        setHovered(null);
+    };
+
+    const handleClick = (item) => {
+        setActiveButton(item);
+    };
+
     const chats = [
         { name: "Bevstack Support", message: "You: hi @~Anirudh Reddy...", time: "4:58 pm" },
         { name: "Gordish <3", message: "y tlj q no se pq no me sale...", time: "9:30 pm" },
@@ -17,7 +53,9 @@ export default function ChatSidebar() {
         <div className="bg-gradient-to-b from-[#030712] to-[#0a0f1a] text-white h-screen w-80 flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
                 <h1 className="text-xl font-bold">Chats</h1>
-                <button className="text-gray-400 hover:text-white text-2xl">+</button>
+                <button className="text-gray-400 hover:text-white text-2xl">
+                    <MoreVertical size={20} />
+                </button>
             </div>
             <div className="p-4">
                 <input 
@@ -28,16 +66,34 @@ export default function ChatSidebar() {
                     className="w-full bg-gray-800 text-white p-2 rounded-lg focus:outline-none"
                 />
             </div>
-            <div className="flex space-x-2 px-4 mb-4">
-                {['All', 'Unread', 'Favorites', 'Groups'].map(filter => (
+            <nav
+                ref={navRef}
+                className="relative flex justify-center gap-6 px-4 py-2 bg-[#0a0f1a] rounded-full mb-4 overflow-hidden"
+                onMouseLeave={handleMouseLeave}
+            >
+                <div
+                    className="absolute top-0 bottom-0 bg-[var(--color-baby-blue)] rounded-full transition-all duration-500 ease-out"
+                    style={{
+                        left: (hovered || activePos)?.left || 0,
+                        width: (hovered || activePos)?.width || 0,
+                    }}
+                ></div>
+
+                {menuItems.map((item) => (
                     <button
-                        key={filter}
-                        className="bg-gray-800 text-gray-400 text-sm px-3 py-1 rounded-full hover:bg-gray-700"
+                        key={item}
+                        data-name={item}
+                        onClick={() => handleClick(item)}
+                        onMouseEnter={handleHover}
+                        className={`relative px-4 py-1 rounded-lg text-sm transition-all duration-300
+                            ${activeButton === item ? "text-black z-10" : "text-white"} 
+                            hover:text-black`}
                     >
-                        {filter}
+                        {item}
                     </button>
                 ))}
-            </div>
+            </nav>
+
             <div className="overflow-y-auto flex-grow space-y-1 px-4">
                 {chats.filter(chat => chat.name.toLowerCase().includes(searchTerm.toLowerCase())).map((chat, index) => (
                     <div 
