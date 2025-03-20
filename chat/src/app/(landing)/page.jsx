@@ -31,6 +31,7 @@ export default function ChatPage() {
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
                 <h2 className="text-xl font-bold text-white">Chat with Bevstack Support</h2>
             </div>
+
             <div className="flex-grow overflow-y-auto p-4 space-y-4">
                 {messages.map((message, index) => (
                     <div 
@@ -53,9 +54,9 @@ export default function ChatPage() {
                 />
                 <button 
                     onClick={handleSendMessage}
-                    className="ml-4 p-2 bg-[#1d4ed8] rounded-full hover:bg-blue-700 transition-all"
+                    className="ml-4 p-2 bg-[var(--color-baby-blue)] rounded-full hover:bg-[#71a6d2] transition-all"
                 >
-                    <Send size={20} color="white" />
+                    <Send size={20} color="black" />
                 </button>
             </div>
         </div>
