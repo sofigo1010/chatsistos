@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Inter", sans-serif;
+  --spacing: 0.25rem;
+  --breakpoint-md: 768px;
+  --color-primary: #1d4ed8;
+  --color-baby-blue: #89CFF0;
+}
