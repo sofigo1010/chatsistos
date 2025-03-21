@@ -199,8 +199,8 @@ static void process_message(struct lws *wsi, const char *msg, size_t msg_len) {
                 cJSON_AddStringToObject(response, "type", "register_success");
                 cJSON_AddStringToObject(response, "sender", "server");
                 cJSON_AddStringToObject(response, "content", "Registro exitoso");
-                cJSON_AddItemToObject(response, "userList", get_user_list());
 
+                cJSON_AddItemToObject(response, "userList", get_registered_users());
                 char *timestamp = get_timestamp();
                 cJSON_AddStringToObject(response, "timestamp", timestamp);
                 free(timestamp);
@@ -294,6 +294,7 @@ static void process_message(struct lws *wsi, const char *msg, size_t msg_len) {
         cJSON_AddStringToObject(response, "sender", "server");
         cJSON_AddItemToObject(response, "content", get_user_list());
 
+        cJSON_AddItemToObject(response, "content", get_registered_users());
         char *timestamp = get_timestamp();
         cJSON_AddStringToObject(response, "timestamp", timestamp);
         free(timestamp);

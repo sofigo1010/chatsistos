@@ -131,3 +131,14 @@ cJSON* get_user_info(const char *target) {
     }
     return NULL;
 }
+
+
+cJSON* get_registered_users(void) {
+    cJSON *array = cJSON_CreateArray();
+    user_node_t *current = user_list;
+    while (current) {
+        cJSON_AddItemToArray(array, cJSON_CreateString(current->username));
+        current = current->next;
+    }
+    return array;
+}

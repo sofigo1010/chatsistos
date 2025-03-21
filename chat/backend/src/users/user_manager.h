@@ -29,6 +29,9 @@ void free_all_users(void);
 // Obtiene la información del usuario (IP, status) en formato cJSON.
 cJSON* get_user_info(const char *target);
 
+cJSON* get_registered_users(void);
+
+
 #ifdef __cplusplus
 }
 #endif
