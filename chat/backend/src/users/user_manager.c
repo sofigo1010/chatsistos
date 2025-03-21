@@ -7,6 +7,7 @@
 // Definición de la estructura para cada nodo de usuario.
 typedef struct user_node {
     char *username;
+    char *ip;
     char *status;   // Nuevo campo para almacenar el estado (ACTIVO, OCUPADO, INACTIVO)
     struct user_node *next;
 } user_node_t;
@@ -14,7 +15,7 @@ typedef struct user_node {
 // Lista global de usuarios.
 static user_node_t *user_list = NULL;
 
-bool register_user(const char *username) {
+bool register_user(const char *username, const char *ip) {
     // Verificar si el usuario ya existe.
     user_node_t *current = user_list;
     while (current != NULL) {
@@ -26,9 +27,8 @@ bool register_user(const char *username) {
     
     // Crear un nuevo nodo para el usuario.
     user_node_t *new_node = malloc(sizeof(user_node_t));
-    if (new_node == NULL) {
+    if (new_node == NULL)
         return false;
-    }
     
     new_node->username = strdup(username);
     if (new_node->username == NULL) {
@@ -36,10 +36,19 @@ bool register_user(const char *username) {
         return false;
     }
     
-    // Establecer el estado por defecto a "ACTIVO"
+    // Almacenar la IP real.
+    new_node->ip = strdup(ip);
+    if (new_node->ip == NULL) {
+        free(new_node->username);
+        free(new_node);
+        return false;
+    }
+    
+    // Establecer el estado por defecto a "ACTIVO".
     new_node->status = strdup("ACTIVO");
     if (new_node->status == NULL) {
         free(new_node->username);
+        free(new_node->ip);
         free(new_node);
         return false;
     }
@@ -93,4 +102,18 @@ void free_all_users(void) {
         current = next;
     }
     user_list = NULL;
+}
+
+cJSON* get_user_info(const char *target) {
+    user_node_t *current = user_list;
+    while (current) {
+        if (strcmp(current->username, target) == 0) {
+            cJSON *info = cJSON_CreateObject();
+            cJSON_AddStringToObject(info, "ip", current->ip);
+            cJSON_AddStringToObject(info, "status", current->status);
+            return info;
+        }
+        current = current->next;
+    }
+    return NULL;
 }

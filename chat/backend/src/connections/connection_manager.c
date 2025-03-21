@@ -71,17 +71,3 @@ cJSON* get_user_list(void) {
     return array;
 }
 
-cJSON* get_user_info(const char *target) {
-    client_node_t *current = client_list;
-    while(current) {
-       if(strcmp(current->username, target) == 0) {
-         cJSON *info = cJSON_CreateObject();
-         // Se simula una IP y estado; en una implementación real se extraería de la conexión.
-         cJSON_AddStringToObject(info, "ip", "127.0.0.1");
-         cJSON_AddStringToObject(info, "status", "ACTIVO");
-         return info;
-       }
-       current = current->next;
-    }
-    return NULL;
-}
