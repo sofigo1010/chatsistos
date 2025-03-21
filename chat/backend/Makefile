@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -I./include -I./src/utils -I./src/users -I./src/connections -I./src/threads
+CFLAGS = -Wall -I./include -I./src -I./src/utils -I./src/users -I./src/connections -I./src/threads
 LIBS = -lwebsockets -lcjson -lpthread
 
 SRC = \

@@ -1,89 +1,95 @@
 #include "user_manager.h"
 #include "logger.h"
-#include <stdio.h>
+#include "config.h"
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <cjson/cJSON.h>
 
-// Definición de la estructura para cada nodo de usuario.
 typedef struct user_node {
     char *username;
     char *ip;
-    char *status;   // Nuevo campo para almacenar el estado (ACTIVO, OCUPADO, INACTIVO)
+    char *status;         // "ACTIVO", "OCUPADO", "INACTIVO"
+    time_t last_activity; // Última actividad (timestamp)
     struct user_node *next;
 } user_node_t;
 
-// Lista global de usuarios.
 static user_node_t *user_list = NULL;
 
 bool register_user(const char *username, const char *ip) {
-    // Verificar si el usuario ya existe.
     user_node_t *current = user_list;
-    while (current != NULL) {
-        if (strcmp(current->username, username) == 0) {
+    while (current) {
+        if (strcmp(current->username, username) == 0)
             return false;
-        }
         current = current->next;
     }
-    
-    // Crear un nuevo nodo para el usuario.
     user_node_t *new_node = malloc(sizeof(user_node_t));
-    if (new_node == NULL)
+    if (!new_node)
         return false;
-    
     new_node->username = strdup(username);
-    if (new_node->username == NULL) {
-        free(new_node);
-        return false;
-    }
-    
-    // Almacenar la IP real.
     new_node->ip = strdup(ip);
-    if (new_node->ip == NULL) {
-        free(new_node->username);
-        free(new_node);
-        return false;
-    }
-    
-    // Establecer el estado por defecto a "ACTIVO".
     new_node->status = strdup("ACTIVO");
-    if (new_node->status == NULL) {
+    new_node->last_activity = time(NULL);
+    if (!new_node->username || !new_node->ip || !new_node->status) {
         free(new_node->username);
         free(new_node->ip);
+        free(new_node->status);
         free(new_node);
         return false;
     }
-    
-    // Insertar el nuevo nodo al inicio de la lista.
     new_node->next = user_list;
     user_list = new_node;
-    
     return true;
 }
 
 bool change_user_status(const char *username, const char *new_status) {
     user_node_t *current = user_list;
-    while (current != NULL) {
+    while (current) {
         if (strcmp(current->username, username) == 0) {
-            // Actualiza el estado: libera el anterior y asigna el nuevo
             free(current->status);
             current->status = strdup(new_status);
-            if (current->status == NULL) {
-                return false;
-            }
-            return true;
+            return current->status != NULL;
         }
         current = current->next;
     }
     return false;
 }
 
+void update_user_activity(const char *username) {
+    user_node_t *current = user_list;
+    time_t now = time(NULL);
+    while (current) {
+        if (strcmp(current->username, username) == 0) {
+            current->last_activity = now;
+            return;
+        }
+        current = current->next;
+    }
+}
+
+void check_inactive_users(time_t now) {
+    user_node_t *current = user_list;
+    while (current) {
+        if (strcmp(current->status, "INACTIVO") != 0) {
+            if ((now - current->last_activity) >= INACTIVITY_TIMEOUT) {
+                log_info("Usuario %s inactivo por %ld segundos, cambiando estado a INACTIVO",
+                         current->username, now - current->last_activity);
+                free(current->status);
+                current->status = strdup("INACTIVO");
+            }
+        }
+        current = current->next;
+    }
+}
+
 void remove_user(const char *username) {
     user_node_t **current = &user_list;
-    while (*current != NULL) {
+    while (*current) {
         if (strcmp((*current)->username, username) == 0) {
             user_node_t *to_delete = *current;
             *current = to_delete->next;
             free(to_delete->username);
+            free(to_delete->ip);
             free(to_delete->status);
             free(to_delete);
             return;
@@ -94,9 +100,10 @@ void remove_user(const char *username) {
 
 void free_all_users(void) {
     user_node_t *current = user_list;
-    while (current != NULL) {
+    while (current) {
         user_node_t *next = current->next;
         free(current->username);
+        free(current->ip);
         free(current->status);
         free(current);
         current = next;

@@ -33,6 +33,8 @@ static pthread_t *threads = NULL;
 static size_t thread_count = 0;
 static bool stop_pool = false;
 
+static pthread_t monitor_thread;
+
 // Prototipo de la función que procesará la lógica del mensaje
 static void process_message(struct lws *wsi, const char *msg, size_t msg_len);
 
@@ -69,6 +71,17 @@ static void *worker_thread(void *arg) {
     return NULL;
 }
 
+// Hilo que monitorea la inactividad de los usuarios
+static void *inactivity_monitor(void *arg) {
+    (void)arg;
+    while (!stop_pool) {
+        sleep(5);  // Revisa cada 5 segundos
+        time_t now = time(NULL);
+        check_inactive_users(now);
+    }
+    return NULL;
+}
+
 // Inicializa el pool de hilos
 void init_thread_pool(size_t num_threads) {
     thread_count = num_threads;
@@ -80,6 +93,12 @@ void init_thread_pool(size_t num_threads) {
             log_error("No se pudo crear el hilo %zu", i);
         }
     }
+
+    // Crear el hilo de monitoreo de inactividad
+    if (pthread_create(&monitor_thread, NULL, inactivity_monitor, NULL) != 0) {
+        log_error("No se pudo crear el hilo de monitoreo de inactividad");
+    }
+
     log_info("Pool de hilos inicializado con %zu hilos", thread_count);
 }
 
@@ -153,6 +172,12 @@ static void process_message(struct lws *wsi, const char *msg, size_t msg_len) {
     if (!cJSON_IsString(type) || !type->valuestring) {
         cJSON_Delete(json);
         return;
+    }
+
+    cJSON *sender = cJSON_GetObjectItemCaseSensitive(json, "sender");
+    if (cJSON_IsString(sender) && sender->valuestring != NULL &&
+       strcmp(type->valuestring, "disconnect") != 0) {
+        update_user_activity(sender->valuestring);
     }
 
     if (strcmp(type->valuestring, "register") == 0) {
