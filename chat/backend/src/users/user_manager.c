@@ -61,11 +61,18 @@ void update_user_activity(const char *username) {
     while (current) {
         if (strcmp(current->username, username) == 0) {
             current->last_activity = now;
+            // Si el usuario estaba inactivo, reactívalo
+            if (strcmp(current->status, "INACTIVO") == 0) {
+                free(current->status);
+                current->status = strdup("ACTIVO");
+                log_info("Usuario %s reactivado", username);
+            }
             return;
         }
         current = current->next;
     }
 }
+
 
 void check_inactive_users(time_t now) {
     user_node_t *current = user_list;
