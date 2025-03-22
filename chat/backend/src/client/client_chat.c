@@ -19,7 +19,6 @@ static pthread_mutex_t resp_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t resp_cond = PTHREAD_COND_INITIALIZER;
 static int response_ready;
 
-// Prototipos
 void show_menu(void);
 void process_server_response(const char *json_str);
 void chat_session(int mode, const char *target);
@@ -36,7 +35,23 @@ void process_server_response(const char *json_str) {
         cJSON_Delete(json);
         return;
     }
-    if (strcmp(type->valuestring, "register_success") == 0) {
+    if (strcmp(type->valuestring, "broadcast") == 0 ||
+        strcmp(type->valuestring, "private") == 0) {
+
+        cJSON *sender = cJSON_GetObjectItem(json, "sender");
+        cJSON *content = cJSON_GetObjectItem(json, "content");
+        cJSON *timestamp = cJSON_GetObjectItem(json, "timestamp");
+
+        if (sender && content && timestamp) {
+            printf("\n%s: %s\n%s\n",
+                   sender->valuestring,
+                   content->valuestring,
+                   timestamp->valuestring);
+        } else {
+            printf("[SERVER] Mensaje de chat con campos faltantes.\n");
+        }
+    }
+    else if (strcmp(type->valuestring, "register_success") == 0) {
         cJSON *content = cJSON_GetObjectItem(json, "content");
         cJSON *userList = cJSON_GetObjectItem(json, "userList");
         printf("\n[SERVER] %s\n", content->valuestring);
@@ -93,6 +108,7 @@ void process_server_response(const char *json_str) {
     }
     cJSON_Delete(json);
 }
+
 
 void request_write(const char *json_str) {
     size_t len = strlen(json_str);
