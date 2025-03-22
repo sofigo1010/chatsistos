@@ -6,6 +6,7 @@
 #include <cjson/cJSON.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 #define MAX_MSG_LEN 512
 
@@ -19,9 +20,28 @@ static pthread_mutex_t resp_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t resp_cond = PTHREAD_COND_INITIALIZER;
 static int response_ready;
 
-void show_menu(void);
-void process_server_response(const char *json_str);
-void chat_session(int mode, const char *target);
+
+void show_menu(void) {
+    printf("\n--- MENÚ DE OPCIONES ---\n");
+    printf("1. Chat Broadcast\n");
+    printf("2. Chat Mensaje Privado\n");
+    printf("3. Listado de Usuarios\n");
+    printf("4. Información de Usuario\n");
+    printf("5. Cambio de Estado\n");
+    printf("6. Desconectar\n");
+    printf("Opción: ");
+    fflush(stdout);
+}
+
+--------------------- */
+void wait_for_response() {
+    pthread_mutex_lock(&resp_mutex);
+    while (!response_ready && !force_exit) {
+        pthread_cond_wait(&resp_cond, &resp_mutex);
+    }
+    response_ready = 0;
+    pthread_mutex_unlock(&resp_mutex);
+}
 
 void process_server_response(const char *json_str) {
     cJSON *json = cJSON_Parse(json_str);
@@ -35,6 +55,8 @@ void process_server_response(const char *json_str) {
         cJSON_Delete(json);
         return;
     }
+
+
     if (strcmp(type->valuestring, "broadcast") == 0 ||
         strcmp(type->valuestring, "private") == 0) {
 
@@ -121,6 +143,47 @@ void request_write(const char *json_str) {
     lws_callback_on_writable(client_wsi);
 }
 
+
+void chat_session(int mode, const char *target) {
+    printf("\n=== MODO CHAT %s ===\n", mode == 1 ? "BROADCAST" : "MENSAJE PRIVADO");
+    printf("Escribe tus mensajes y presiona Enter para enviarlos.\n");
+    printf("Escribe '/salir' para volver al menú.\n");
+    char buf[256];
+    while (1) {
+        printf("chat> ");
+        fflush(stdout);
+        if (!fgets(buf, sizeof(buf), stdin))
+            break;
+        char *p = strchr(buf, '\n');
+        if (p) *p = '\0';
+
+        if (strcmp(buf, "/salir") == 0)
+            break;
+
+        if (strlen(buf) == 0)
+            continue;
+
+        cJSON *json = cJSON_CreateObject();
+        if (mode == 1) { // broadcast
+            cJSON_AddStringToObject(json, "type", "broadcast");
+            cJSON_AddStringToObject(json, "sender", user_name);
+            cJSON_AddStringToObject(json, "content", buf);
+        } else if (mode == 2) { // privado
+            cJSON_AddStringToObject(json, "type", "private");
+            cJSON_AddStringToObject(json, "sender", user_name);
+            cJSON_AddStringToObject(json, "target", target);
+            cJSON_AddStringToObject(json, "content", buf);
+        }
+        char *msg = cJSON_PrintUnformatted(json);
+        request_write(msg);
+        free(msg);
+        cJSON_Delete(json);
+
+    }
+    printf("Saliendo del modo chat...\n");
+}
+
+
 static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
                            void *user, void *in, size_t len) {
     switch (reason) {
@@ -128,7 +191,6 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
         int flag = 1;
         setsockopt(lws_get_socket_fd(wsi), IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
         printf("\n[CLIENT] Conexión establecida.\n");
-        // Enviar registro automáticamente
         cJSON *reg = cJSON_CreateObject();
         cJSON_AddStringToObject(reg, "type", "register");
         cJSON_AddStringToObject(reg, "sender", user_name);
@@ -140,6 +202,7 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
     case LWS_CALLBACK_CLIENT_RECEIVE: {
         ((char*)in)[len] = '\0';
         process_server_response((char*)in);
+
         pthread_mutex_lock(&resp_mutex);
         response_ready = 1;
         pthread_cond_signal(&resp_cond);
@@ -157,139 +220,117 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
     case LWS_CALLBACK_CLOSED:
         force_exit = 1;
         break;
+    default:
+        break;
     }
     return 0;
 }
+
 
 static const struct lws_protocols protocols[] = {
     { "chat-protocol", callback_client, 0, MAX_MSG_LEN },
     { NULL, NULL, 0, 0 }
 };
 
-void show_menu(void) {
-    printf("\n--- MENÚ DE OPCIONES ---\n");
-    printf("1. Chat Broadcast\n");
-    printf("2. Chat Mensaje Privado\n");
-    printf("3. Listado de Usuarios\n");
-    printf("4. Información de Usuario\n");
-    printf("5. Cambio de Estado\n");
-    printf("6. Desconectar\n");
-    printf("Opción: ");
-    fflush(stdout);
-}
-
-void wait_for_response() {
-    pthread_mutex_lock(&resp_mutex);
-    while (!response_ready)
-        pthread_cond_wait(&resp_cond, &resp_mutex);
-    response_ready = 0;
-    pthread_mutex_unlock(&resp_mutex);
-}
-
-void chat_session(int mode, const char *target) {
-    printf("\n=== MODO CHAT %s ===\n", mode == 1 ? "BROADCAST" : "MENSAJE PRIVADO");
-    printf("Escribe tus mensajes y presiona Enter para enviarlos.\n");
-    printf("Escribe '/salir' para volver al menú.\n");
-    char buf[256];
-    while (1) {
-        printf("chat> ");
-        fflush(stdout);
-        if (!fgets(buf, sizeof(buf), stdin))
-            break;
-        char *p = strchr(buf, '\n');
-        if (p) *p = '\0';
-        if (strcmp(buf, "/salir") == 0)
-            break;
-        if (strlen(buf) == 0)
-            continue;
-        cJSON *json = cJSON_CreateObject();
-        if (mode == 1) {
-            cJSON_AddStringToObject(json, "type", "broadcast");
-            cJSON_AddStringToObject(json, "sender", user_name);
-            cJSON_AddStringToObject(json, "content", buf);
-        } else if (mode == 2) {
-            cJSON_AddStringToObject(json, "type", "private");
-            cJSON_AddStringToObject(json, "sender", user_name);
-            cJSON_AddStringToObject(json, "target", target);
-            cJSON_AddStringToObject(json, "content", buf);
-        }
-        char *msg = cJSON_PrintUnformatted(json);
-        request_write(msg);
-        free(msg);
-        cJSON_Delete(json);
-    }
-    printf("Saliendo del modo chat...\n");
-}
 
 void *menu_thread(void *_) {
     char choice[10], buf[256];
+
     while (!force_exit) {
         show_menu();
         if (!fgets(choice, sizeof(choice), stdin))
             continue;
         int opt = atoi(choice);
+
         cJSON *json = NULL;
         switch(opt) {
             case 1: // Chat Broadcast
                 chat_session(1, NULL);
+                wait_for_response();
                 break;
+
             case 2: { // Chat Mensaje Privado
                 printf("Destinatario: ");
                 if (!fgets(buf, sizeof(buf), stdin))
                     continue;
                 char *target = strtok(buf, "\n");
+                if (!target) continue;
+                /* Sesión de chat privado */
                 chat_session(2, target);
+                wait_for_response();
                 break;
             }
-            case 3: // Listado de Usuarios
+
+            case 3: { // Listado de Usuarios
                 json = cJSON_CreateObject();
                 cJSON_AddStringToObject(json, "type", "list_users");
                 cJSON_AddStringToObject(json, "sender", user_name);
                 break;
-            case 4: // Información de Usuario
+            }
+            case 4: { // Información de Usuario
                 printf("Usuario info: ");
                 if (!fgets(buf, sizeof(buf), stdin))
                     continue;
+                char *target = strtok(buf, "\n");
+                if (!target) continue;
                 json = cJSON_CreateObject();
                 cJSON_AddStringToObject(json, "type", "user_info");
                 cJSON_AddStringToObject(json, "sender", user_name);
-                cJSON_AddStringToObject(json, "target", strtok(buf, "\n"));
+                cJSON_AddStringToObject(json, "target", target);
                 break;
-            case 5: // Cambio de Estado
+            }
+            case 5: { // Cambio de Estado
                 printf("Nuevo estado: ");
                 if (!fgets(buf, sizeof(buf), stdin))
                     continue;
+                char *p = strchr(buf, '\n');
+                if (p) *p = '\0';
+
                 json = cJSON_CreateObject();
                 cJSON_AddStringToObject(json, "type", "change_status");
                 cJSON_AddStringToObject(json, "sender", user_name);
-                cJSON_AddStringToObject(json, "content", strtok(buf, "\n"));
+                cJSON_AddStringToObject(json, "content", buf);
                 break;
-            case 6: // Desconectar
+            }
+            case 6: { // Desconectar
                 json = cJSON_CreateObject();
                 cJSON_AddStringToObject(json, "type", "disconnect");
                 cJSON_AddStringToObject(json, "sender", user_name);
+                /* Enviar y salir */
                 request_write(cJSON_PrintUnformatted(json));
                 cJSON_Delete(json);
                 force_exit = 1;
-                return NULL;
+                break;
+            }
             default:
                 printf("[CLIENT] Opción inválida.\n");
+                break;
         }
+
+        /* 3) Si se generó un JSON (excepto en chat_session), enviarlo y esperar la respuesta */
         if (json) {
-            request_write(cJSON_PrintUnformatted(json));
+            char *json_str = cJSON_PrintUnformatted(json);
+            request_write(json_str);
+            free(json_str);
             cJSON_Delete(json);
-            if (opt != 1 && opt != 2)
+            if (!force_exit) {
                 wait_for_response();
+            }
         }
+    }
+
+    return NULL;
+}
+
+
+void *service_thread(void *_) {
+    while (!force_exit) {
+        lws_service(context, 0);
+        usleep(1000);
     }
     return NULL;
 }
 
-void *service_thread(void *_) {
-    while (!force_exit)
-        lws_service(context, 50);
-    return NULL;
-}
 
 int main(int argc, char **argv) {
     if (argc != 5) {
@@ -299,16 +340,19 @@ int main(int argc, char **argv) {
 
     strcpy(user_name, argv[2]);
 
-    struct lws_context_creation_info info = {0};
+    struct lws_context_creation_info info;
+    memset(&info, 0, sizeof(info));
     info.port = CONTEXT_PORT_NO_LISTEN;
     info.protocols = protocols;
+
     context = lws_create_context(&info);
     if (!context) {
         fprintf(stderr, "Error creando contexto\n");
         return 1;
     }
 
-    struct lws_client_connect_info ccinfo = {0};
+    struct lws_client_connect_info ccinfo;
+    memset(&ccinfo, 0, sizeof(ccinfo));
     ccinfo.context  = context;
     ccinfo.address  = argv[3];
     ccinfo.port     = atoi(argv[4]);
@@ -326,8 +370,10 @@ int main(int argc, char **argv) {
     pthread_t t1, t2;
     pthread_create(&t1, NULL, menu_thread, NULL);
     pthread_create(&t2, NULL, service_thread, NULL);
+
     pthread_join(t1, NULL);
     pthread_join(t2, NULL);
+
     lws_context_destroy(context);
     return 0;
 }
