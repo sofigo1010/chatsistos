@@ -22,11 +22,14 @@ static int callback_chat(struct lws *wsi,
             break;
 
         case LWS_CALLBACK_RECEIVE:
-        {
             // Encolar el mensaje para que lo procese el pool de hilos
             dispatch_message(wsi, (const char *)in, len);
             break;
-        }
+
+        case LWS_CALLBACK_SERVER_WRITEABLE:
+            // Envía los mensajes pendientes que se hayan encolado para este wsi
+            write_pending_messages(wsi);
+            break;
 
         case LWS_CALLBACK_CLOSED:
             log_info("Cliente desconectado");
@@ -77,6 +80,7 @@ int main(int argc, char *argv[])
     // Iniciar el pool de hilos (ejemplo: 4 hilos)
     init_thread_pool(4);
 
+    // Loop principal del servicio de libwebsockets
     while (1) {
         lws_service(context, 50);
     }
