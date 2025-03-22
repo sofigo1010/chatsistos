@@ -19,9 +19,10 @@ static pthread_mutex_t resp_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t resp_cond = PTHREAD_COND_INITIALIZER;
 static int response_ready;
 
-// Prototipos de funciones utilizadas antes de su definición
+// Prototipos
 void show_menu(void);
 void process_server_response(const char *json_str);
+void chat_session(int mode, const char *target);
 
 void process_server_response(const char *json_str) {
     cJSON *json = cJSON_Parse(json_str);
@@ -35,7 +36,6 @@ void process_server_response(const char *json_str) {
         cJSON_Delete(json);
         return;
     }
-
     if (strcmp(type->valuestring, "register_success") == 0) {
         cJSON *content = cJSON_GetObjectItem(json, "content");
         cJSON *userList = cJSON_GetObjectItem(json, "userList");
@@ -151,10 +151,9 @@ static const struct lws_protocols protocols[] = {
 };
 
 void show_menu(void) {
-    // Menú sin opción de registro
     printf("\n--- MENÚ DE OPCIONES ---\n");
-    printf("1. Broadcast\n");
-    printf("2. Mensaje Privado\n");
+    printf("1. Chat Broadcast\n");
+    printf("2. Chat Mensaje Privado\n");
     printf("3. Listado de Usuarios\n");
     printf("4. Información de Usuario\n");
     printf("5. Cambio de Estado\n");
@@ -171,6 +170,41 @@ void wait_for_response() {
     pthread_mutex_unlock(&resp_mutex);
 }
 
+void chat_session(int mode, const char *target) {
+    printf("\n=== MODO CHAT %s ===\n", mode == 1 ? "BROADCAST" : "MENSAJE PRIVADO");
+    printf("Escribe tus mensajes y presiona Enter para enviarlos.\n");
+    printf("Escribe '/salir' para volver al menú.\n");
+    char buf[256];
+    while (1) {
+        printf("chat> ");
+        fflush(stdout);
+        if (!fgets(buf, sizeof(buf), stdin))
+            break;
+        char *p = strchr(buf, '\n');
+        if (p) *p = '\0';
+        if (strcmp(buf, "/salir") == 0)
+            break;
+        if (strlen(buf) == 0)
+            continue;
+        cJSON *json = cJSON_CreateObject();
+        if (mode == 1) {
+            cJSON_AddStringToObject(json, "type", "broadcast");
+            cJSON_AddStringToObject(json, "sender", user_name);
+            cJSON_AddStringToObject(json, "content", buf);
+        } else if (mode == 2) {
+            cJSON_AddStringToObject(json, "type", "private");
+            cJSON_AddStringToObject(json, "sender", user_name);
+            cJSON_AddStringToObject(json, "target", target);
+            cJSON_AddStringToObject(json, "content", buf);
+        }
+        char *msg = cJSON_PrintUnformatted(json);
+        request_write(msg);
+        free(msg);
+        cJSON_Delete(json);
+    }
+    printf("Saliendo del modo chat...\n");
+}
+
 void *menu_thread(void *_) {
     char choice[10], buf[256];
     while (!force_exit) {
@@ -180,31 +214,17 @@ void *menu_thread(void *_) {
         int opt = atoi(choice);
         cJSON *json = NULL;
         switch(opt) {
-            case 1: // Broadcast
-                printf("Broadcast: ");
-                if (!fgets(buf, sizeof(buf), stdin))
-                    continue;
-                json = cJSON_CreateObject();
-                cJSON_AddStringToObject(json, "type", "broadcast");
-                cJSON_AddStringToObject(json, "sender", user_name);
-                cJSON_AddStringToObject(json, "content", strtok(buf, "\n"));
+            case 1: // Chat Broadcast
+                chat_session(1, NULL);
                 break;
-            case 2: // Mensaje Privado
+            case 2: { // Chat Mensaje Privado
                 printf("Destinatario: ");
                 if (!fgets(buf, sizeof(buf), stdin))
                     continue;
-                {
-                    char *target = strtok(buf, "\n");
-                    printf("Mensaje: ");
-                    if (!fgets(buf, sizeof(buf), stdin))
-                        continue;
-                    json = cJSON_CreateObject();
-                    cJSON_AddStringToObject(json, "type", "private");
-                    cJSON_AddStringToObject(json, "sender", user_name);
-                    cJSON_AddStringToObject(json, "target", target);
-                    cJSON_AddStringToObject(json, "content", strtok(buf, "\n"));
-                }
+                char *target = strtok(buf, "\n");
+                chat_session(2, target);
                 break;
+            }
             case 3: // Listado de Usuarios
                 json = cJSON_CreateObject();
                 cJSON_AddStringToObject(json, "type", "list_users");
@@ -242,8 +262,7 @@ void *menu_thread(void *_) {
         if (json) {
             request_write(cJSON_PrintUnformatted(json));
             cJSON_Delete(json);
-            // Para opciones que requieren respuesta, se espera (excepto Broadcast)
-            if (opt != 1)
+            if (opt != 1 && opt != 2)
                 wait_for_response();
         }
     }
@@ -261,6 +280,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Uso: %s <nombre_del_cliente> <nombre_de_usuario> <IP_del_servidor> <puerto_del_servidor>\n", argv[0]);
         return 1;
     }
+
     strcpy(user_name, argv[2]);
 
     struct lws_context_creation_info info = {0};
