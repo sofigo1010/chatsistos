@@ -33,7 +33,6 @@ void show_menu(void) {
     fflush(stdout);
 }
 
---------------------- */
 void wait_for_response() {
     pthread_mutex_lock(&resp_mutex);
     while (!response_ready && !force_exit) {
@@ -55,7 +54,6 @@ void process_server_response(const char *json_str) {
         cJSON_Delete(json);
         return;
     }
-
 
     if (strcmp(type->valuestring, "broadcast") == 0 ||
         strcmp(type->valuestring, "private") == 0) {
@@ -183,7 +181,6 @@ void chat_session(int mode, const char *target) {
     printf("Saliendo del modo chat...\n");
 }
 
-
 static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
                            void *user, void *in, size_t len) {
     switch (reason) {
@@ -232,12 +229,13 @@ static const struct lws_protocols protocols[] = {
     { NULL, NULL, 0, 0 }
 };
 
-
 void *menu_thread(void *_) {
     char choice[10], buf[256];
 
     while (!force_exit) {
+
         show_menu();
+
         if (!fgets(choice, sizeof(choice), stdin))
             continue;
         int opt = atoi(choice);
@@ -245,6 +243,7 @@ void *menu_thread(void *_) {
         cJSON *json = NULL;
         switch(opt) {
             case 1: // Chat Broadcast
+
                 chat_session(1, NULL);
                 wait_for_response();
                 break;
@@ -255,7 +254,6 @@ void *menu_thread(void *_) {
                     continue;
                 char *target = strtok(buf, "\n");
                 if (!target) continue;
-                /* Sesión de chat privado */
                 chat_session(2, target);
                 wait_for_response();
                 break;
@@ -279,24 +277,41 @@ void *menu_thread(void *_) {
                 cJSON_AddStringToObject(json, "target", target);
                 break;
             }
-            case 5: { // Cambio de Estado
-                printf("Nuevo estado: ");
+            case 5: { // Cambio de Estado (menú numérico)
+                printf("Seleccione el nuevo estado:\n");
+                printf("1. ACTIVO\n");
+                printf("2. OCUPADO\n");
+                printf("3. INACTIVO\n");
+                printf("Opción: ");
+                fflush(stdout);
                 if (!fgets(buf, sizeof(buf), stdin))
                     continue;
-                char *p = strchr(buf, '\n');
-                if (p) *p = '\0';
-
+                int choice = atoi(buf);
+                const char *status = NULL;
+                switch (choice) {
+                    case 1:
+                        status = "ACTIVO";
+                        break;
+                    case 2:
+                        status = "OCUPADO";
+                        break;
+                    case 3:
+                        status = "INACTIVO";
+                        break;
+                    default:
+                        printf("[CLIENT] Opción de estado inválida.\n");
+                        continue; 
+                }
                 json = cJSON_CreateObject();
                 cJSON_AddStringToObject(json, "type", "change_status");
                 cJSON_AddStringToObject(json, "sender", user_name);
-                cJSON_AddStringToObject(json, "content", buf);
+                cJSON_AddStringToObject(json, "content", status);
                 break;
             }
             case 6: { // Desconectar
                 json = cJSON_CreateObject();
                 cJSON_AddStringToObject(json, "type", "disconnect");
                 cJSON_AddStringToObject(json, "sender", user_name);
-                /* Enviar y salir */
                 request_write(cJSON_PrintUnformatted(json));
                 cJSON_Delete(json);
                 force_exit = 1;
@@ -307,12 +322,12 @@ void *menu_thread(void *_) {
                 break;
         }
 
-        /* 3) Si se generó un JSON (excepto en chat_session), enviarlo y esperar la respuesta */
         if (json) {
             char *json_str = cJSON_PrintUnformatted(json);
             request_write(json_str);
             free(json_str);
             cJSON_Delete(json);
+
             if (!force_exit) {
                 wait_for_response();
             }
