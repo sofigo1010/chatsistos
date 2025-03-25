@@ -34,5 +34,6 @@ cJSON* get_user_info(const char *target);
 /* Funciones para encolar y enviar mensajes pendientes */
 void enqueue_pending_message(struct lws *wsi, const char *msg, size_t msg_len);
 void write_pending_messages(struct lws *wsi);
+client_node_t* get_all_clients(void);
 
 #endif

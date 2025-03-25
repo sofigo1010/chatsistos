@@ -27,7 +27,7 @@ static int callback_chat(struct lws *wsi,
             break;
 
         case LWS_CALLBACK_SERVER_WRITEABLE:
-            // Envía los mensajes pendientes que se hayan encolado para este wsi
+            // Envía los mensajes pendientes para este wsi
             write_pending_messages(wsi);
             break;
 
@@ -36,11 +36,25 @@ static int callback_chat(struct lws *wsi,
             remove_client(wsi);
             break;
 
+        // -------------- NUEVO: --------------
+        case LWS_CALLBACK_EVENT_WAIT_CANCELLED: {
+            // Recorres tu lista de wsi y llamas lws_callback_on_writable() para los que tengan pendientes
+            client_node_t *cur = get_all_clients();
+            while (cur) {
+                if (cur->pending_head != NULL) {
+                    lws_callback_on_writable(cur->wsi);
+                }
+                cur = cur->next;
+            }
+            break;
+        }        
+
         default:
             break;
     }
     return 0;
 }
+
 
 static struct lws_protocols protocols[] = {
     {

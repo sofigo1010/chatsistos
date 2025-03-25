@@ -72,8 +72,9 @@ void enqueue_pending_message(struct lws *wsi, const char *message, size_t messag
         log_error("enqueue_pending_message: cliente no encontrado");
         return;
     }
-    // Agregar un '\n' al final del mensaje.
-    size_t new_len = message_len + 1; // espacio adicional para el newline
+
+    // Crear el nuevo nodo de mensaje pendiente
+    size_t new_len = message_len + 1; // para el '\n'
     pending_msg_t *new_msg = malloc(sizeof(pending_msg_t));
     if (!new_msg) {
         log_error("Error al asignar memoria para pending_msg");
@@ -86,10 +87,11 @@ void enqueue_pending_message(struct lws *wsi, const char *message, size_t messag
         return;
     }
     memcpy(new_msg->data, message, message_len);
-    new_msg->data[message_len] = '\n';  // Agrega el salto de línea
+    new_msg->data[message_len] = '\n';
     new_msg->len = new_len;
     new_msg->next = NULL;
-    
+
+    // Enlazar a la cola pendiente del cliente
     if (client->pending_tail == NULL) {
         client->pending_head = new_msg;
         client->pending_tail = new_msg;
@@ -97,10 +99,12 @@ void enqueue_pending_message(struct lws *wsi, const char *message, size_t messag
         client->pending_tail->next = new_msg;
         client->pending_tail = new_msg;
     }
-    
-    // Solicitar que se invoque el callback de escritura para este wsi.
-    lws_callback_on_writable(wsi);
+
+    struct lws_context *ctx = lws_get_context(wsi);
+    lws_cancel_service(ctx); 
 }
+
+
 
 
 void write_pending_messages(struct lws *wsi) {
@@ -156,3 +160,7 @@ cJSON* get_user_list(void) {
     return array;
 }
 
+client_node_t* get_all_clients(void)
+{
+    return client_list;
+}
