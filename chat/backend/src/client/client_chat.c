@@ -10,22 +10,22 @@
 #include <time.h>
 #include <errno.h>
 
-#define MAX_MSG_LEN 512
+#define MAX_MSG_LEN 512 
 
+// Variables globales para la conexión y la sincronización
 static struct lws *client_wsi;
 static struct lws_context *context;
 static volatile int force_exit;
 static char send_buffer[LWS_PRE + MAX_MSG_LEN];
 static char user_name[50];
 
-/* Para sincronizar respuestas de comandos que queremos esperar */
-static pthread_mutex_t resp_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t resp_mutex = PTHREAD_MUTEX_INITIALIZER; // Para sincronizar respuestas
 static pthread_cond_t resp_cond = PTHREAD_COND_INITIALIZER;
 static int response_ready = 0;
 
-/* Mutex para proteger la salida estándar */
-static pthread_mutex_t stdout_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t stdout_mutex = PTHREAD_MUTEX_INITIALIZER; // Para proteger la salida estándar
 
+// Muestra el menú de opciones
 void show_menu(void) {
     pthread_mutex_lock(&stdout_mutex);
     printf("\n--- MENÚ DE OPCIONES ---\n");
@@ -40,13 +40,12 @@ void show_menu(void) {
     pthread_mutex_unlock(&stdout_mutex);
 }
 
-/* Espera hasta que se reciba una respuesta (para los comandos del menú)
-   o se agote el timeout (5 segundos) */
+// Espera respuesta del servidor o timeout (5 segundos)
 void wait_for_response(void) {
     pthread_mutex_lock(&resp_mutex);
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5;  // Timeout de 5 segundos
+    ts.tv_sec += 5;  
     int ret = 0;
     while (!response_ready && !force_exit && ret != ETIMEDOUT) {
         ret = pthread_cond_timedwait(&resp_cond, &resp_mutex, &ts);
@@ -55,12 +54,7 @@ void wait_for_response(void) {
     pthread_mutex_unlock(&resp_mutex);
 }
 
-/* Procesa e imprime la respuesta del servidor.
-   - Si el mensaje es de tipo "broadcast" o "private", se muestra con el prefijo correspondiente
-     y NO se desbloquea la espera (para que no interrumpa la respuesta de comandos).
-   - Para otros tipos de respuesta, después de imprimir se desbloquea la espera.
-   - Si se recibe un error cuyo contenido contenga "ya existe", se informa, se pide intentar con otro usuario y se termina el programa.
-*/
+// Procesa e imprime la respuesta del servidor según su tipo
 void process_server_response(const char *json_str) {
     cJSON *json = cJSON_Parse(json_str);
     if (!json) {
@@ -107,7 +101,6 @@ void process_server_response(const char *json_str) {
         fflush(stdout);
         pthread_mutex_unlock(&stdout_mutex);
         cJSON_Delete(json);
-        /* Para mensajes de chat no se desbloquea la condición */
         return;
     }
     else if (strcmp(type->valuestring, "register_success") == 0) {
@@ -161,7 +154,7 @@ void process_server_response(const char *json_str) {
     }
     else if (strcmp(type->valuestring, "error") == 0) {
         cJSON *content = cJSON_GetObjectItem(json, "content");
-        if (content && strstr(content->valuestring, "ya existe") != NULL) {
+        if (content && strstr(content->valuestring, "El usuario ya existe") != NULL) {
             printf("\n[SERVER] ERROR: %s\n", content->valuestring);
             printf("\n[CLIENT] El usuario ya existe. Por favor intente con otro usuario.\n");
             fflush(stdout);
@@ -178,7 +171,8 @@ void process_server_response(const char *json_str) {
     }
     fflush(stdout);
     pthread_mutex_unlock(&stdout_mutex);
-    /* Señalizamos para respuestas de comandos (no chat) */
+    
+    // Señala que la respuesta ya está lista
     pthread_mutex_lock(&resp_mutex);
     response_ready = 1;
     pthread_cond_signal(&resp_cond);
@@ -186,6 +180,7 @@ void process_server_response(const char *json_str) {
     cJSON_Delete(json);
 }
 
+// Prepara el mensaje y solicita escribir al servidor
 void request_write(const char *json_str) {
     size_t len = strlen(json_str);
     if (len >= MAX_MSG_LEN) {
@@ -198,6 +193,7 @@ void request_write(const char *json_str) {
     lws_cancel_service(context);
 }
 
+// Sesión de chat: modo broadcast o privado
 void chat_session(int mode, const char *target) {
     pthread_mutex_lock(&stdout_mutex);
     printf("\n=== MODO CHAT %s ===\n", mode == 1 ? "BROADCAST" : "MENSAJE PRIVADO");
@@ -223,6 +219,7 @@ void chat_session(int mode, const char *target) {
         if (strlen(buf) == 0)
             continue;
 
+        // Crea el JSON del mensaje según el modo
         cJSON *json = cJSON_CreateObject();
         if (mode == 1) {
             cJSON_AddStringToObject(json, "type", "broadcast");
@@ -238,7 +235,6 @@ void chat_session(int mode, const char *target) {
         request_write(msg);
         free(msg);
         cJSON_Delete(json);
-        /* No se llama a wait_for_response() para chat, para no bloquear la conversación */
     }
 
     pthread_mutex_lock(&stdout_mutex);
@@ -247,6 +243,7 @@ void chat_session(int mode, const char *target) {
     pthread_mutex_unlock(&stdout_mutex);
 }
 
+// Callback de libwebsockets para eventos del cliente
 static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
                            void *user, void *in, size_t len) {
     switch (reason) {
@@ -257,8 +254,7 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
         printf("\n[CLIENT] Conexión establecida.\n");
         fflush(stdout);
         pthread_mutex_unlock(&stdout_mutex);
-
-        /* Enviamos el mensaje de registro */
+        // Envía registro de usuario
         cJSON *reg = cJSON_CreateObject();
         cJSON_AddStringToObject(reg, "type", "register");
         cJSON_AddStringToObject(reg, "sender", user_name);
@@ -278,7 +274,6 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
 
             cJSON *json = cJSON_Parse(msg);
             if (json) {
-                /* Procesar e imprimir la respuesta */
                 char *json_str = cJSON_PrintUnformatted(json);
                 process_server_response(json_str);
                 free(json_str);
@@ -305,11 +300,13 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
     return 0;
 }
 
+// Definición de protocolos para libwebsockets
 static const struct lws_protocols protocols[] = {
     { "chat-protocol", callback_client, 0, MAX_MSG_LEN },
     { NULL, NULL, 0, 0 }
 };
 
+// Hilo para mostrar el menú y gestionar las opciones del usuario
 void *menu_thread(void *_) {
     char choice[10], buf[256];
     while (!force_exit) {
@@ -321,7 +318,6 @@ void *menu_thread(void *_) {
         cJSON *json = NULL;
         switch(opt) {
             case 1:
-                /* Chat Broadcast (no bloquea) */
                 chat_session(1, NULL);
                 break;
             case 2: {
@@ -333,7 +329,6 @@ void *menu_thread(void *_) {
                     continue;
                 char *target = strtok(buf, "\n");
                 if (!target) continue;
-                /* Chat Privado (no bloquea) */
                 chat_session(2, target);
                 break;
             }
@@ -406,8 +401,6 @@ void *menu_thread(void *_) {
                 pthread_mutex_unlock(&stdout_mutex);
                 continue;
         }
-        /* Para las opciones del menú que requieren respuesta (list, info, status),
-           se espera a que se imprima la respuesta antes de reimprimir el menú. */
         if (json) {
             char *json_str = cJSON_PrintUnformatted(json);
             request_write(json_str);
@@ -420,6 +413,7 @@ void *menu_thread(void *_) {
     return NULL;
 }
 
+// Hilo que ejecuta el servicio de libwebsockets
 void *service_thread(void *_) {
     while (!force_exit) {
         lws_service(context, 50);
@@ -428,6 +422,7 @@ void *service_thread(void *_) {
     return NULL;
 }
 
+// Función principal: configura la conexión y lanza los hilos
 int main(int argc, char **argv) {
     if (argc != 5) {
         fprintf(stderr, "Uso: %s <nombre_del_cliente> <nombre_de_usuario> <IP_del_servidor> <puerto_del_servidor>\n", argv[0]);
@@ -445,7 +440,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Datos de conexión */
+    // Configuración de la conexión con el servidor
     struct lws_client_connect_info ccinfo;
     memset(&ccinfo, 0, sizeof(ccinfo));
     ccinfo.context  = context;
@@ -461,15 +456,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Iniciamos el hilo de servicio para recibir respuestas */
     pthread_t t_menu, t_service;
     pthread_create(&t_service, NULL, service_thread, NULL);
 
-    /* Esperamos la respuesta del servidor (register_success o error)
-       antes de mostrar el menú */
     wait_for_response();
 
-    /* Ahora iniciamos el hilo del menú */
     pthread_create(&t_menu, NULL, menu_thread, NULL);
 
     pthread_join(t_menu, NULL);
