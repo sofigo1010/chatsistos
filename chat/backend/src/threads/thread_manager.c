@@ -3,7 +3,6 @@
 #include "time_utils.h"
 #include "user_manager.h"
 #include "connection_manager.h"
-
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>

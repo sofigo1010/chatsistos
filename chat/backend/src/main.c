@@ -33,7 +33,14 @@ static int callback_chat(struct lws *wsi,
 
         case LWS_CALLBACK_CLOSED:
             log_info("Cliente desconectado");
-            remove_client(wsi);
+            // Antes de remover el cliente, obtenemos el nombre de usuario
+            {
+                client_node_t *client = get_all_clients(); // O usa una función para obtener el cliente asociado a 'wsi'
+                if (client && client->username) {
+                    remove_user(client->username); // Elimina el usuario
+                }
+            }
+            remove_client(wsi); // Elimina la conexión
             break;
 
         // -------------- NUEVO: --------------
@@ -48,7 +55,6 @@ static int callback_chat(struct lws *wsi,
             }
             break;
         }        
-
         default:
             break;
     }
