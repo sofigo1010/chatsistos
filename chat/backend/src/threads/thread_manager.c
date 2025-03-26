@@ -455,6 +455,7 @@ static void process_message(struct lws *wsi, const char *msg, size_t msg_len) {
         // Procesar desconexión controlada
         cJSON *senderJson = cJSON_GetObjectItemCaseSensitive(json, "sender");
         if (cJSON_IsString(senderJson) && senderJson->valuestring != NULL) {
+            remove_user(senderJson->valuestring);
             // Notificar a todos que este usuario se desconectó
             cJSON *response = cJSON_CreateObject();
             cJSON_AddStringToObject(response, "type", "user_disconnected");
